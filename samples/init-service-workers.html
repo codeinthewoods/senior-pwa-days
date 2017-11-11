@@ -1,0 +1,11 @@
+<!-- Insert this at the very bottom of your index.hmtl or other entry point -->
+<script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker
+            .register('/sw.js') // use whatever script here you need
+            .then(function() {
+                // just to know that service workers are supported by browser
+                console.log("Service Worker Registered");
+            });
+    }
+</script>
