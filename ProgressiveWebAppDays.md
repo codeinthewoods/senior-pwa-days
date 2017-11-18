@@ -144,4 +144,191 @@ Perfect!
 
 ## Notify when interesting stuff hapns
 
+What you can do with push notifications?
+
+  - Send timely notifications to users from your backend server
+  - Create a set of actions for user to respond with from mobile lock screen
+  - Add badge (b&w) for mobile status bar
+  - Add icon to show besides notification
+  - group notifications with a tag
+  - Open web page or focus on on open tab when user clicks notification
+  - fetch some extra data, cache page etc. before loading
+
+What you need?
+
+  - Service workers
+  - Application keys for encypting push messages
+  - Unique push token from client that is used to send messages to a particular device and browser
+
+A good place to start:
+
+https://developers.google.com/web/fundamentals/push-notifications/
+
+A walk-through project:
+
+https://developers.google.com/web/fundamentals/codelabs/push-notifications/
+
+### Steps to enable push notifications in server
+
+1. Application server keys (VAPID)
+
+Today: get them [here](https://web-push-codelab.glitch.me/)
+
+For production purposes in your own PWA: Use a specific library, e.g. [web-push for node](https://github.com/web-push-libs/web-push)
+
+Remember to generate keys only once and store them somewhere else than git (password manager would be a good place)
+
+    npm install web-push -g
+
+    // log keys to console
+    web-push generate-vapid-keys [--json]
+
+Result will look like
+
+    {"publicKey":"BEb-...KLLXmkY", privateKey":"Vys4eHO..-AjvwU"}
+
+These will go to the `options` part of the push sent, together with GCM api key.
+ The `subject` will be displayed as sender in the notification.
+
+### Steps to enable push notifications in client
+
+1. Get a handle to service worker
+
+To be able to send push messages, you need to get permission from user.  For that, we need to use Service Workers:
+
+    // in browser
+    async function installServiceWorker() {
+      if ('serviceWorker' in navigator && 'PushManager' in window) {
+        try {
+          const serviceWorker = await navigator.serviceWorker.register('sw.js')
+          await registerPush(serviceWorker)
+        } catch (error) {
+          console.error('Service Worker Error', error))
+        }
+      } else {
+        // push messages are not supported,
+      }
+    }
+
+    // install the listener
+    document.addEventListener('DOMContentLoaded', installServiceWorker)
+
+2. Get a push subscription
+
+Code to test if push messages are enabled:
+
+    async function registerPush(serviceWorker) {
+      const subscription = await serviceWorker.pushManager.getSubscription()
+      const isSubscribed = !(subscription === null)
+
+      if (isSubscribed) {
+        // send keys to server always as they will expire after a while
+        await userSubscribed(subscription)
+      } else {
+        // user is not subscribed, display permission dialog
+        const newSubscription = await askForNotificationPermission(serviceWorker)
+        // if user gave permissions, send keys to server
+        if (newSubscription !== null) {
+          userSubscribed(newSubscription)
+        }
+      }
+    }
+
+3. Ask for permission
+
+We need to prompt for push permissions. Code to urlB64ToUint8Array can be found from [web-push](https://github.com/web-push-libs/web-push)
+
+    async function askForNotificationPermission(serviceWorker) {
+      const applicationServerKey = urlB64ToUint8Array('<your public key from above>')
+      return await serviceWorker.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: applicationServerKey
+      })
+    }
+
+3. Send push subscription to your server
+
+This part you will have to implement by yourself
+
+    async function userSubscribed(subscription) {
+      // for example like this
+      const serverAnswer = fetch('POST', {
+        url: '<my server url>',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(subscription)
+      })
+      // do something with answer and return
+      handleAnswer(serverAnswer)
+    }
+
+After this, you are basically set up in client side.
+
+### Send the actual notification
+
+Example in node.js
+
+https://github.com/web-push-libs/web-push#sendnotificationpushsubscription-payload-options
+
 ##  Sync with backend periodically to be sure we are up to date
+
+
+If you used https://web-push-codelab.glitch.me/ to create app keys, you can also use it to send messages.  In that case you need to print out the subscription in the application instead:
+
+    async function userSubscribed(subscription) {
+      console.log("here be push subscription", JSON.stringify(subscription))
+    }
+
+## Receiving push messages
+
+All code related to handling push messages should go to your service worker `sw.js`
+
+### Listening for push messages
+
+Once we have asked for permissions and sent push subscription to server, we start receiving push messages.  We don't need to know anything about subscriptions or push managers here:
+
+    self.addEventListener('push', event => {
+      if (event.data) {
+        console.log('This push event has data: ', event.data.text())
+      } else {
+        console.log('This push event has no data.')
+      }
+    })
+
+Things to do with event:
+
+    // Returns string
+    event.data.text()
+
+    // Parses data as JSON string and returns an Object
+    event.data.json()
+
+    // Returns blob of data
+    event.data.blob()
+
+    // Returns an arrayBuffer
+    event.data.arrayBuffer()
+
+### Display notification
+
+Actually receiving push messages is not per se so useful without being able to interact with user, so let's show a notification instead:
+
+    self.addEventListener('push', (event) =>
+      // same as service workers last time.
+      // we need to keep the service worker alive until notification is shown,
+      // therefore use waitUntil and connect it to the promise returned from
+      // show notification
+      event.waitUntil(self.registration.showNotification('Code from the woods!'))
+    )
+
+### What next
+
+Look at some samples on what to do with events:
+
+https://web-push-book.gauntface.com/chapter-05/04-common-notification-patterns/#message-page-from-a-push-event
+
+Actions and tags are explained here:
+
+https://developers.google.com/web/fundamentals/push-notifications/notification-behaviour
